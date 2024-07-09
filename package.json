@@ -1,0 +1,12 @@
+{
+  "name": "@rdev06/imongo",
+  "version": "1.0.1",
+  "main": "index.js",
+  "repository": "git@github.com:rdev06/imongo.git",
+  "author": "rdev06 <rdev.dev06@gmail.com>",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "mongodb": "^6.12.0"
+  }
+}
