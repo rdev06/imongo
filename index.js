@@ -11,7 +11,7 @@ async function checkConnection(db, option) {
     await client.connect();
     db = client.db(parseUri.pathname.slice(1));
   }
-  if (db.hasOwnProperty('readyState')) {
+  if (typeof db.readyState === 'number') {
     if (!db.readyState) throw 'Provided client is not active';
     if (db.useDb) db = db.useDb(option.dbName);
   } else if (!db instanceof MongoClient) {
