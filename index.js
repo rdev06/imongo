@@ -7,7 +7,11 @@ async function checkConnection(db, option) {
     const password = parseUri.password || option.pass;
     const pathname = parseUri.pathname.slice(1) || option.dbName || 'LOGS';
     db = parseUri.href;
-    const client = new MongoClient(parseUri.href, {username, password});
+    const mongoOptions = {};
+    if(username && password){
+      mongoOptions['auth'] = {username, password}
+    }
+    const client = new MongoClient(parseUri.href, mongoOptions);
     await client.connect();
     db = client.db(pathname);
   }
