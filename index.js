@@ -39,10 +39,11 @@ export default async function (db, option) {
         return col;
       })
       .catch(async (err) => {
-        if (err.code != 48) throw err;
+        if (![48, 85].includes(err.code)) throw err;
         const col = db.collection(collectionName);
         const ttlIndexName = ttlfield + '_1';
-        const prevTtlInfo = (await col.indexes()).find((e) => e.name === ttlIndexName);
+        const prevIndexes = await col.indexes();
+        const prevTtlInfo = prevIndexes.find((e) => e.name === ttlIndexName);
         if (!prevTtlInfo || prevTtlInfo.expireAfterSeconds != expireAfterSeconds) {
           prevTtlInfo && (await col.dropIndex(ttlIndexName));
           await col.createIndex({ timestamp: 1 }, { background: true, expireAfterSeconds });
