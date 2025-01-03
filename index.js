@@ -3,11 +3,11 @@ import { MongoClient } from 'mongodb';
 async function checkConnection(db, option) {
   if (typeof db === 'string') {
     const parseUri = new URL(db);
-    if (option.user) parseUri.username = option.user;
-    if (option.pass) parseUri.password = option.pass;
-    parseUri.pathname = option.dbName || 'LOGS';
+    const username = parseUri.username || option.user;
+    const password = parseUri.password || option.pass;
+    // mongoOption.pathname = option.dbName || 'LOGS';
     db = parseUri.href;
-    const client = new MongoClient(parseUri.href, option);
+    const client = new MongoClient(parseUri.href, {username, password});
     await client.connect();
     db = client.db(parseUri.pathname.slice(1));
   }
