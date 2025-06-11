@@ -1,53 +1,44 @@
 import { MongoClient } from 'mongodb';
 import pkg from './package.json' with {type: 'json'};
 
-const updateColls = ['inbound', 'axios'];
+const updateColls = ['Inbound', 'OutBound'];
 
-const inboundPipeline = [
+const inboundPipeline = (ttlField = 'timestamp') => [
   {
-    $lookup: {
-      from: 'inbound_u',
-      localField: '_id',
-      foreignField: '_id',
-      as: 'res'
+    $group: {
+      _id: '$_id',
+      req: {
+        $mergeObjects: '$req'
+      },
+      txn: { $mergeObjects: '$$ROOT' }
     }
   },
   {
     $addFields: {
-      res: {
-        $reduce: {
-          input: '$res',
-          initialValue: {},
-          in: { $mergeObjects: ['$$value', '$$this'] }
-        }
-      }
+      'txn.req': '$req'
     }
   },
   {
-    $addFields: {
-      error: '$res.error',
-      duration: '$res.duration',
-      statusCode: '$res.statusCode',
-      res: '$res.res'
+    $replaceRoot: {
+      newRoot: '$txn'
     }
-  }
+  },
+  { $sort: { [ttlField]: -1 } }
 ];
 
-const axiosPipeline = [
+const outboundPipeline = (ttlField = 'timestamp') => [
   {
-    $lookup: {
-      from: 'axios_u',
-      localField: '_id',
-      foreignField: '_id',
-      as: 'res'
+    $group: {
+      _id: '$_id',
+      txn: { $mergeObjects: '$$ROOT' }
     }
   },
   {
-    $addFields: {
-      duration: { $first: '$res.duration' },
-      res: { $first: '$res.res' }
+    $replaceRoot: {
+      newRoot: '$txn'
     }
-  }
+  },
+  { $sort: { [ttlField]: -1 } }
 ];
 
 async function checkConnection(db, option) {
@@ -88,39 +79,36 @@ export default async function (db, option) {
   if (!option.label) {
     option.label = 'default';
   }
-  return async function (collectionName, ttlfield = 'timestamp', expireAfterSeconds = 172800000, type) {
-    const logger = { create: null };
-    for (const a of ['create', 'update']) {
-      let colName = type;
-      if (!updateColls.includes(type)) {
-        if (a === 'update') continue;
-      } else colName += a === 'create' ? '_c' : '_u';
-      if (!createCol) logger[a] = await db.collection(colName);
-      else {
-        logger[a] = await db.createCollection(colName, {
-          expireAfterSeconds,
-          timeseries: { timeField: ttlfield, granularity: 'seconds', metaField: 'label' }
-        });
-        await db.collection(colName).createIndex({ _id: 1 });
-      }
+  return async function (collectionName, ttlOption) {
+    let logger;
+    let colName = collectionName;
+    if (updateColls.includes(collectionName)) colName += '_a';
+    if (!createCol) logger = await db.collection(colName);
+    else {
+      const timeField = ttlOption.field || 'timestamp';
+      logger = await db.createCollection(colName, {
+        expireAfterSeconds: ttlOption.expireAfterSeconds || 172800000,
+        timeseries: { timeField, granularity: 'seconds', metaField: 'label' }
+      });
+      logger.createIndex({ [timeField]: -1 });
     }
 
     if (createCol) {
-      if (type === 'inbound') {
-        await db.createCollection(collectionName, { viewOn: 'inbound_c', pipeline: inboundPipeline });
-      } else if (type === 'axios') {
-        await db.createCollection(collectionName, { viewOn: 'axios_c', pipeline: axiosPipeline });
+      if (collectionName === 'Inbound') {
+        await db.createCollection(collectionName, { viewOn: 'Inbound_a', pipeline: inboundPipeline(ttlOption.field) });
+      } else if (collectionName === 'OutBound') {
+        await db.createCollection(collectionName, { viewOn: 'OutBound_a', pipeline: outboundPipeline(ttlOption.field) });
       }
     }
 
     return {
       create: async (d) => {
-        const inserted = await logger.create.insertOne({ ...d, label: option.label });
+        const inserted = await logger.insertOne({ ...d, label: option.label });
         return inserted.insertedId;
       },
-      update: (_id, d) => logger.update.insertOne({ _id, ...d, label: option.label }),
-      delete: (_id) => logger.create.deleteOne({ _id }),
-      error: (d) => logger.create.insertOne(Object.assign(d, { label: option.label, flag: 'error' }))
+      update: (_id, d) => logger.insertOne({ _id, ...d, label: option.label }),
+      delete: (_id) => logger.deleteOne({ _id }),
+      error: (d) => logger.insertOne(Object.assign(d, { label: option.label, flag: 'error' }))
     };
   };
 }
