@@ -1,45 +1,7 @@
 import { MongoClient } from 'mongodb';
 import pkg from './package.json' with {type: 'json'};
 
-const updateColls = ['Inbound', 'OutBound'];
-
-const inboundPipeline = (ttlField = 'timestamp') => [
-  {
-    $group: {
-      _id: '$_id',
-      req: {
-        $mergeObjects: '$req'
-      },
-      txn: { $mergeObjects: '$$ROOT' }
-    }
-  },
-  {
-    $addFields: {
-      'txn.req': '$req'
-    }
-  },
-  {
-    $replaceRoot: {
-      newRoot: '$txn'
-    }
-  },
-  { $sort: { [ttlField]: -1 } }
-];
-
-const outboundPipeline = (ttlField = 'timestamp') => [
-  {
-    $group: {
-      _id: '$_id',
-      txn: { $mergeObjects: '$$ROOT' }
-    }
-  },
-  {
-    $replaceRoot: {
-      newRoot: '$txn'
-    }
-  },
-  { $sort: { [ttlField]: -1 } }
-];
+const TxnCols = ['Inbound', 'OutBound'];
 
 async function checkConnection(db, option) {
   if (typeof db === 'string') {
@@ -81,33 +43,36 @@ export default async function (db, option) {
   }
   return async function (collectionName, ttlOption) {
     let logger;
-    let colName = collectionName;
-    if (updateColls.includes(collectionName)) colName += '_a';
-    if (!createCol) logger = await db.collection(colName);
+    const isTxnCols = TxnCols.includes(collectionName);
+    if (!createCol) logger = await db.collection(collectionName);
     else {
       const timeField = ttlOption.field || 'timestamp';
-      logger = await db.createCollection(colName, {
+      const timeseriesOpts = {
         expireAfterSeconds: ttlOption.expireAfterSeconds || 172800000,
-        timeseries: { timeField, granularity: 'seconds', metaField: 'label' }
-      });
-      logger.createIndex({ [timeField]: -1 });
-    }
-
-    if (createCol) {
-      if (collectionName === 'Inbound') {
-        await db.createCollection(collectionName, { viewOn: 'Inbound_a', pipeline: inboundPipeline(ttlOption.field) });
-      } else if (collectionName === 'OutBound') {
-        await db.createCollection(collectionName, { viewOn: 'OutBound_a', pipeline: outboundPipeline(ttlOption.field) });
+        timeseries: { timeField, granularity: 'seconds', metaField: 'meta' }
       }
+
+      logger = await db.createCollection(collectionName, timeseriesOpts);
+      logger.createIndex({ [timeField]: -1 });
     }
 
     return {
       create: async (d) => {
+        if(d.hasOwnProperty('_id') && d.hasOwnProperty('meta')){
+          d.meta._id = d._id
+        }
         const inserted = await logger.insertOne({ ...d, label: option.label });
         return inserted.insertedId;
       },
-      update: (_id, d) => logger.insertOne({ _id, ...d, label: option.label }),
-      delete: (_id) => logger.deleteOne({ _id }),
+      update: (_id, d) => {
+        // we know generally this only when txn is their
+        const toUpdate = {};
+        for (const k in d) {
+          toUpdate[`meta.${k}`] = d[k]         
+        }
+        return logger.updateMany({'meta._id': _id}, {$set: toUpdate})
+      },
+      delete: (_id) => logger.deleteMany({'meta._id': _id}), // will delete only in timeseries coll, else not
       error: (d) => logger.insertOne(Object.assign(d, { label: option.label, flag: 'error' }))
     };
   };
