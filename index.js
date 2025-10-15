@@ -3,43 +3,43 @@ import pkg from './package.json' with {type: 'json'};
 
 const updateColls = ['Inbound', 'OutBound'];
 
-const inboundPipeline = (ttlField = 'timestamp') => [
-  {
-    $group: {
-      _id: '$_id',
-      req: {
-        $mergeObjects: '$req'
-      },
-      txn: { $mergeObjects: '$$ROOT' }
-    }
-  },
-  {
-    $addFields: {
-      'txn.req': '$req'
-    }
-  },
-  {
-    $replaceRoot: {
-      newRoot: '$txn'
-    }
-  },
-  { $sort: { [ttlField]: -1 } }
-];
+// const inboundPipeline = (ttlField = 'timestamp') => [
+//   {
+//     $group: {
+//       _id: '$_id',
+//       req: {
+//         $mergeObjects: '$req'
+//       },
+//       txn: { $mergeObjects: '$$ROOT' }
+//     }
+//   },
+//   {
+//     $addFields: {
+//       'txn.req': '$req'
+//     }
+//   },
+//   {
+//     $replaceRoot: {
+//       newRoot: '$txn'
+//     }
+//   },
+//   { $sort: { [ttlField]: -1 } }
+// ];
 
-const outboundPipeline = (ttlField = 'timestamp') => [
-  {
-    $group: {
-      _id: '$_id',
-      txn: { $mergeObjects: '$$ROOT' }
-    }
-  },
-  {
-    $replaceRoot: {
-      newRoot: '$txn'
-    }
-  },
-  { $sort: { [ttlField]: -1 } }
-];
+// const outboundPipeline = (ttlField = 'timestamp') => [
+//   {
+//     $group: {
+//       _id: '$_id',
+//       txn: { $mergeObjects: '$$ROOT' }
+//     }
+//   },
+//   {
+//     $replaceRoot: {
+//       newRoot: '$txn'
+//     }
+//   },
+//   { $sort: { [ttlField]: -1 } }
+// ];
 
 async function checkConnection(db, option) {
   if (typeof db === 'string') {
@@ -93,13 +93,13 @@ export default async function (db, option) {
       logger.createIndex({ [timeField]: -1 });
     }
 
-    if (createCol) {
-      if (collectionName === 'Inbound') {
-        await db.createCollection(collectionName, { viewOn: 'Inbound_a', pipeline: inboundPipeline(ttlOption.field) });
-      } else if (collectionName === 'OutBound') {
-        await db.createCollection(collectionName, { viewOn: 'OutBound_a', pipeline: outboundPipeline(ttlOption.field) });
-      }
-    }
+    // if (createCol) {
+    //   if (collectionName === 'Inbound') {
+    //     await db.createCollection(collectionName, { viewOn: 'Inbound_a', pipeline: inboundPipeline(ttlOption.field) });
+    //   } else if (collectionName === 'OutBound') {
+    //     await db.createCollection(collectionName, { viewOn: 'OutBound_a', pipeline: outboundPipeline(ttlOption.field) });
+    //   }
+    // }
 
     return {
       create: async (d) => {
